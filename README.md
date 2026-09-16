@@ -5,7 +5,7 @@
 
 **The free coding agent. Everyone brings a model; nobody pays.**
 
-Freebuff proved coding can be free — funded by ads, served from their gateway, on their terms (peak pauses, session caps, region gates, prompts that personalize ads). Pitchin is the other way to free: **your hardware + free tiers you already own**, routed by [modelwake](https://github.com/robinaider/modelwake), with receipts.
+Coding can be free two ways. Someone else pays and sets the terms — ads, peak-hour pauses, session caps, region gates, prompts that personalize ads. Or **your hardware + free tiers you already own**, routed by [modelwake](https://github.com/robinaider/modelwake), with receipts. Pitchin is the second way.
 
 ```bash
 pip install pitchin modelwake

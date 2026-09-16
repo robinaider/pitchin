@@ -125,6 +125,23 @@ class TestLoop(unittest.TestCase):
             self.assertFalse(res.done)
             self.assertIn("backend error", res.reason)
 
+    def test_skill_invocation_injects_and_continues(self):
+        with tempfile.TemporaryDirectory() as t:
+            replies = ["/plan", "Planned: nothing to do."]
+            res = run("do it", scripted(replies), t, allow_all,
+                      skills={"plan": "PLAN BODY"})
+            self.assertTrue(res.done)
+            self.assertEqual(res.turns, 2)
+            texts = [m["content"] for m in res.transcript
+                     if m["role"] == "user"]
+            self.assertTrue(any("PLAN BODY" in c for c in texts))
+
+    def test_unknown_slash_finishes(self):
+        with tempfile.TemporaryDirectory() as t:
+            res = run("hi", scripted(["/nope not a skill"]), t, allow_all,
+                      skills={"plan": "x"})
+            self.assertTrue(res.done)
+
 
 class TestSkills(unittest.TestCase):
     def test_loads_md(self):
