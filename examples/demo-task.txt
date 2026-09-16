@@ -1,0 +1,2 @@
+Task: in the project root, create hello.txt containing exactly "pitchin was here"
+then run `cat hello.txt` via bash and report the output. Smallest steps only.
