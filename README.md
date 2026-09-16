@@ -21,4 +21,11 @@ pitchin skills
 - **BYOK escape hatch** — one config line to frontier when free isn't enough; same freedom as connected models, none of the lock-in
 - Stdlib only. No gateway, no ads, no accounts, no training on your code.
 
+```bash
+pitchin agent --config free.toml --prompt "..." --transcript runs.jsonl  # receipts
+pitchin serve --config free.toml --root ./myproject  # browser UI on localhost:8080
+```
+
+Every run appends JSONL transcripts — the dataset the eval story compounds from.
+
 Ad-funded free wins on zero-config breadth today. Pitchin wins the moment you care who sees your prompts, or a peak-hour pause kills your flow. Different free — pick with eyes open.

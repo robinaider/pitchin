@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -92,3 +94,23 @@ def load_skills(d: str | Path) -> dict[str, str]:
         except OSError:
             continue
     return out
+
+
+def write_transcript(path: str | Path, meta: dict,
+                     transcript: list[Message], result: RunResult) -> None:
+    """Append one run as JSONL: meta line, message lines, result line.
+
+    Transcripts are the eval dataset — every free-model claim pitchin ever
+    makes should trace back to one of these files.
+    """
+    p = Path(path)
+    if p.parent != Path(".") and str(p.parent):
+        p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"type": "meta", "ts": time.time(), **meta}) + "\n")
+        for m in transcript:
+            fh.write(json.dumps({"type": "message", "role": m.get("role"),
+                                 "content": m.get("content", "")}) + "\n")
+        fh.write(json.dumps({"type": "result", "done": result.done,
+                             "reason": result.reason, "turns": result.turns,
+                             "final": result.final}) + "\n")

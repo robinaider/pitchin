@@ -143,6 +143,25 @@ class TestLoop(unittest.TestCase):
             self.assertTrue(res.done)
 
 
+class TestTranscript(unittest.TestCase):
+    def test_jsonl_roundtrip(self):
+        import json
+
+        from pitchin.loop import write_transcript
+        with tempfile.TemporaryDirectory() as t:
+            res = run("bump it", scripted(["fine."]), t, allow_all)
+            out = str(Path(t) / "sub" / "run.jsonl")
+            write_transcript(out, {"prompt": "bump it"}, res.transcript, res)
+            lines = [json.loads(x) for x in Path(out).read_text().splitlines()]
+            self.assertEqual(lines[0]["type"], "meta")
+            self.assertEqual(lines[0]["prompt"], "bump it")
+            self.assertEqual(lines[-1], {"type": "result", "done": True,
+                                         "reason": "done", "turns": 1,
+                                         "final": "fine."})
+            self.assertTrue(any(x["type"] == "message" and x["role"] == "assistant"
+                                for x in lines))
+
+
 class TestSkills(unittest.TestCase):
     def test_loads_md(self):
         with tempfile.TemporaryDirectory() as t:
@@ -152,6 +171,97 @@ class TestSkills(unittest.TestCase):
     def test_missing_dir_empty(self):
         with tempfile.TemporaryDirectory() as t:
             self.assertEqual(load_skills(str(Path(t) / "nope")), {})
+
+
+class TestServe(unittest.TestCase):
+    def test_bridge_allow_deny_timeout(self):
+        import threading
+
+        from pitchin.serve import ApprovalBridge
+        b = ApprovalBridge(timeout=5.0)
+        got = []
+        th = threading.Thread(target=lambda: got.append(b.ask("bash", "run x")))
+        th.start()
+        import time as _t
+        for _ in range(100):
+            if b.current():
+                break
+            _t.sleep(0.01)
+        self.assertEqual(b.current(), {"tool": "bash", "summary": "run x"})
+        self.assertTrue(b.decide(True))
+        th.join(timeout=5)
+        self.assertEqual(got, [True])
+
+        b2 = ApprovalBridge(timeout=0.05)
+        self.assertFalse(b2.ask("write", "f"))  # nobody answers -> deny
+        self.assertFalse(b2.decide(True))  # nothing pending
+
+    def test_http_run_end_to_end(self):
+        import json as _json
+        import threading as _th
+        import time as _t
+        import urllib.request as _url
+        from http.server import ThreadingHTTPServer
+
+        from pitchin.serve import Server, make_handler
+
+        def fake_backend(messages):
+            if len([m for m in messages if m["role"] == "assistant"]) >= 1:
+                return "All sorted."
+            return '```tool:read path="v.txt"```'
+
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "v.txt").write_text("v=1\n")
+            srv = Server(fake_backend, root=t,
+                         transcript_dir=str(Path(t) / "tr"))
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(srv))
+            port = httpd.server_address[1]
+            _th.Thread(target=httpd.serve_forever, daemon=True).start()
+            try:
+                req = _url.Request(
+                    f"http://127.0.0.1:{port}/api/run",
+                    data=_json.dumps({"prompt": "read it"}).encode(),
+                    headers={"Content-Type": "application/json"})
+                rid = _json.loads(_url.urlopen(req, timeout=10).read())["id"]
+                final = ""
+                for _ in range(100):
+                    with _url.urlopen(
+                            f"http://127.0.0.1:{port}/api/state?id={rid}",
+                            timeout=10) as r:
+                        snap = _json.loads(r.read())
+                    if snap["status"] in ("done", "error"):
+                        final = snap["final"]
+                        break
+                    _t.sleep(0.05)
+                self.assertEqual(final, "All sorted.")
+                self.assertTrue((Path(t) / "tr" / f"{rid}.jsonl").exists())
+                self.assertTrue(snap["transcript"].endswith(f"{rid}.jsonl"))
+            finally:
+                httpd.shutdown()
+
+    def test_run_validation(self):
+        import json as _json
+        import threading as _th
+        import urllib.request as _url
+        from http.server import ThreadingHTTPServer
+
+        from pitchin.serve import Server, make_handler
+        srv = Server(lambda m: "x")
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(srv))
+        port = httpd.server_address[1]
+        _th.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            req = _url.Request(
+                f"http://127.0.0.1:{port}/api/run",
+                data=_json.dumps({"prompt": "   "}).encode(),
+                headers={"Content-Type": "application/json"})
+            try:
+                _url.urlopen(req, timeout=10)
+                self.fail("expected 400")
+            except Exception as e:
+                self.assertIn("400", str(e))
+        finally:
+            httpd.shutdown()
 
 
 if __name__ == "__main__":
